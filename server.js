@@ -1,19 +1,27 @@
 var express = require('express');
 var passport = require('passport');
 var Strategy = require('passport-local').Strategy;
+var ApiStrategy = require('passport-localapikey').Strategy;
 var jsonParser = require('body-parser').json();
 var db = require('./db');
 var control = require('./control');
 
-passport.use(new Strategy(
-  function(username, password, cb) {
-    db.users.findByUsername(username, function(err, user) {
-      if (err) { return cb(err); }
-      if (!user) { return cb(null, false); }
-      if (user.password != password) { return cb(null, false); }
-      return cb(null, user);
-    });
-  }));
+passport.use(new Strategy(function(username, password, cb) {
+  db.users.findByUsername(username, function(err, user) {
+    if (err) { return cb(err); }
+    if (!user) { return cb(null, false); }
+    if (user.password != password) { return cb(null, false); }
+    return cb(null, user);
+  });
+}));
+
+passport.use(new ApiStrategy(function(apikey, done) {
+  db.users.findByApiKey(apikey, function(err, user) {
+    if (err) { return done(err); }
+    if (!user) { return done(null, false, { message: 'Unknown apikey : ' + apikey }); }
+    return done(null, user);
+  })
+}));
 
 passport.serializeUser(function(user, cb) {
   cb(null, user.id);
@@ -83,4 +91,13 @@ app.post('/control/light',
     res.send(req.body);
   });
 
-app.listen(3000);
+app.post('/api/control/light',
+  passport.authenticate('localapikey', { session: false }),
+  jsonParser,
+  function (req, res) {
+    if (!req.body) return res.sendStatus(400);
+    control.controlLight(req.body.command, req.body.target);
+    res.send(req.body);
+  });
+
+app.listen(4000);
